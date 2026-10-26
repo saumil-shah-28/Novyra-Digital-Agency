@@ -1,0 +1,23 @@
+// Server-only password hashing. scrypt is Node's built-in KDF, so this needs
+// no extra dependency and never touches the client bundle (only imported
+// from other server-only modules).
+import { randomBytes, scrypt as scryptCb, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
+
+const scrypt = promisify(scryptCb);
+const KEY_LEN = 64;
+
+export async function hashPassword(password: string): Promise<string> {
+  const salt = randomBytes(16).toString("hex");
+  const derived = (await scrypt(password, salt, KEY_LEN)) as Buffer;
+  return `${salt}:${derived.toString("hex")}`;
+}
+
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  const [salt, hashHex] = stored.split(":");
+  if (!salt || !hashHex) return false;
+  const derived = (await scrypt(password, salt, KEY_LEN)) as Buffer;
+  const hashBuf = Buffer.from(hashHex, "hex");
+  if (hashBuf.length !== derived.length) return false;
+  return timingSafeEqual(derived, hashBuf);
+}
